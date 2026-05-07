@@ -1,6 +1,5 @@
-[build]
-  command = ""
-  publish = "/"
+name = "nj-property-scout"
+compatibility_date = "2026-05-07"
 
-[functions]
-  directory = "functions"
+[assets]
+directory = "."
