@@ -26,7 +26,7 @@ export async function onRequest(context) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1000 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 4000 },
         }),
       }
     );
