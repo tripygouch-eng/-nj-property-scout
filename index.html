@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NJ Property Scout — Live Sheriff Sales</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --blue:#1a56db;--blue-light:#3b82f6;--blue-pale:#eff6ff;--blue-mid:#dbeafe;
+      --navy:#0f172a;--slate:#334155;--muted:#64748b;--border:#e2e8f0;
+      --white:#fff;--bg:#f8fafc;--green:#10b981;--amber:#f59e0b;--red:#ef4444;
+      --shadow:0 1px 3px rgba(0,0,0,.07),0 4px 16px rgba(0,0,0,.05);
+      --shadow-lg:0 8px 32px rgba(0,0,0,.12);
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--navy);min-height:100vh;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+    header{background:var(--white);border-bottom:1px solid var(--border);padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
+    .logo{display:flex;align-items:center;gap:10px;}
+    .logo-icon{width:36px;height:36px;background:var(--blue);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;}
+    .logo-text{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);}
+    .logo-badge{font-size:11px;font-weight:600;color:var(--green);background:#dcfce7;padding:3px 8px;border-radius:20px;}
+    .header-right{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+    .live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;}
+
+    .app{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 64px);}
+    .map-panel{background:var(--white);border-right:1px solid var(--border);padding:20px;overflow-y:auto;position:sticky;top:64px;height:calc(100vh - 64px);}
+    .panel-title{font-size:14px;font-weight:600;color:var(--navy);margin-bottom:4px;}
+    .panel-sub{font-size:12px;color:var(--muted);margin-bottom:14px;}
+    .county-list{display:flex;flex-direction:column;gap:3px;}
+    .county-btn{padding:9px 13px;border:1px solid var(--border);border-radius:8px;background:var(--white);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--slate);cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;transition:all .15s;}
+    .county-btn:hover{border-color:var(--blue-light);color:var(--blue);background:var(--blue-pale);}
+    .county-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
+    .live-tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;background:rgba(16,185,129,.15);color:#059669;}
+    .county-btn.active .live-tag{background:rgba(255,255,255,.2);color:#fff;}
+    .ext-tag{font-size:10px;color:var(--muted);}
+
+    .content-panel{padding:28px;overflow-y:auto;}
+    .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;text-align:center;}
+    .empty-icon{width:80px;height:80px;background:var(--blue-pale);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:20px;}
+    .empty-state h3{font-size:20px;font-weight:600;color:var(--navy);margin-bottom:8px;}
+    .empty-state p{font-size:14px;color:var(--muted);max-width:360px;line-height:1.6;}
+    .loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:14px;}
+    .spinner{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;}
+    .loading-text{font-size:14px;color:var(--muted);font-weight:500;}
+    .loading-sub{font-size:12px;color:var(--muted);opacity:.7;}
+
+    .county-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:16px;}
+    .county-title{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);}
+    .county-subtitle{font-size:13px;color:var(--muted);margin-top:3px;}
+    .sheriff-link{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue);background:var(--blue-pale);padding:8px 14px;border-radius:8px;text-decoration:none;white-space:nowrap;}
+    .sheriff-link:hover{background:var(--blue-mid);}
+
+    .stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+    .stat-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+    .stat-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+    .stat-value{font-size:24px;font-weight:700;color:var(--navy);}
+    .stat-value.blue{color:var(--blue);}
+
+    .filter-bar{display:flex;gap:10px;margin-bottom:18px;align-items:center;}
+    .search-box{flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--white);color:var(--navy);}
+    .search-box:focus{outline:none;border-color:var(--blue-light);}
+    .filter-count{font-size:12px;color:var(--muted);white-space:nowrap;}
+
+    .properties-list{display:flex;flex-direction:column;gap:10px;}
+    .prop-card{background:var(--white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);transition:box-shadow .2s,transform .15s,border-color .15s;animation:fadeUp .2s ease both;}
+    .prop-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px);}
+    .prop-card.open{border-color:var(--blue-light);}
+    .prop-card-header{padding:16px 18px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;}
+    .prop-num{width:28px;height:28px;background:var(--blue-pale);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0;margin-top:2px;}
+    .prop-info{flex:1;min-width:0;}
+    .prop-address{font-size:15px;font-weight:600;color:var(--navy);margin-bottom:4px;line-height:1.3;}
+    .prop-city{font-size:12px;color:var(--muted);margin-bottom:7px;}
+    .prop-meta{display:flex;flex-wrap:wrap;gap:5px;}
+    .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+    .badge-date{background:#fef3c7;color:#92400e;}
+    .badge-sheriff{background:var(--blue-pale);color:var(--blue);}
+    .badge-defendant{background:#f1f5f9;color:var(--slate);font-weight:400;}
+    .prop-toggle{font-size:16px;color:var(--muted);flex-shrink:0;transition:transform .2s;margin-top:3px;}
+    .prop-card.open .prop-toggle{transform:rotate(180deg);}
+
+    .prop-body{border-top:1px solid var(--border);padding:18px;background:#fafcff;display:none;}
+    .prop-card.open .prop-body{display:block;}
+
+    .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+    .detail-item{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+    .detail-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+    .detail-value{font-size:13px;color:var(--navy);font-weight:500;line-height:1.4;}
+
+    /* Full details panel */
+    .full-details-box{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--slate);line-height:1.8;}
+    .full-details-box .detail-row{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);}
+    .full-details-box .detail-row:last-child{border-bottom:none;}
+    .full-details-box .dk{font-weight:600;color:var(--navy);min-width:160px;}
+
+    .action-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+    .action-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;}
+    .btn-primary{background:var(--blue);color:#fff;}
+    .btn-primary:hover:not(:disabled){background:#1d4ed8;}
+    .btn-secondary{background:var(--white);color:var(--slate);border:1px solid var(--border);}
+    .btn-secondary:hover:not(:disabled){border-color:var(--blue-light);color:var(--blue);background:var(--blue-pale);}
+    .btn-details{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+    .btn-details:hover:not(:disabled){background:#dcfce7;}
+    .btn-danger{background:#fff1f2;color:var(--red);border:1px solid #fecdd3;}
+    .btn-danger:hover:not(:disabled){background:#ffe4e6;}
+    .action-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+    .info-section{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;}
+    .info-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--navy);}
+    .info-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;}
+    .icon-blue{background:var(--blue-pale);}
+    .icon-red{background:#fff1f2;}
+    .status-tag{margin-left:auto;font-size:11px;font-weight:600;}
+    .status-done{color:var(--green);}
+    .status-error{color:var(--red);}
+    .info-body{padding:14px;font-size:13px;color:var(--slate);line-height:1.8;}
+
+    /* COMPS TABLE */
+    .comps-table{width:100%;border-collapse:collapse;font-size:12px;}
+    .comps-table th{background:var(--bg);padding:7px 10px;text-align:left;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);}
+    .comps-table td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--slate);}
+    .comps-table tr:last-child td{border-bottom:none;}
+    .comps-table tr:hover td{background:var(--blue-pale);}
+    .price-cell{font-weight:700;color:var(--navy);}
+    .arv-box{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+    .arv-item{text-align:center;padding:10px;background:var(--bg);border-radius:8px;}
+    .arv-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+    .arv-value{font-size:17px;font-weight:700;}
+    .arv-value.green{color:var(--green);}
+    .arv-value.blue{color:var(--blue);}
+    .arv-value.amber{color:var(--amber);}
+    .source-link{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--blue);margin-top:8px;text-decoration:none;}
+    .source-link:hover{text-decoration:underline;}
+
+    /* LIEN PANEL */
+    .lien-panel{padding:14px;}
+    .risk-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:9px;font-size:13px;font-weight:700;margin-bottom:14px;}
+    .risk-low{background:#dcfce7;color:#14532d;}
+    .risk-medium{background:#fef3c7;color:#92400e;}
+    .risk-high{background:#fff1f2;color:#b91c1c;}
+    .lien-analysis{font-size:13px;color:var(--slate);line-height:1.8;white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;}
+    .lien-links-title{font-size:11px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+    .lien-links-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+    .lien-link-card{border:1px solid var(--border);border-radius:9px;padding:10px 12px;text-decoration:none;transition:all .15s;display:block;}
+    .lien-link-card:hover{border-color:var(--blue-light);background:var(--blue-pale);}
+    .lien-link-label{font-size:12px;font-weight:600;color:var(--blue);margin-bottom:2px;}
+    .lien-link-desc{font-size:11px;color:var(--muted);line-height:1.3;}
+    .lien-note{font-size:11px;color:var(--muted);margin-top:10px;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;line-height:1.5;}
+
+    .notes-label{font-size:12px;font-weight:600;color:var(--navy);margin-bottom:7px;}
+    textarea.notes-input{width:100%;background:var(--white);border:1px solid var(--border);border-radius:9px;color:var(--navy);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;resize:vertical;line-height:1.7;min-height:85px;}
+    textarea.notes-input:focus{outline:none;border-color:var(--blue-light);box-shadow:0 0 0 3px rgba(59,130,246,.1);}
+
+    .error-box{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#b91c1c;}
+    .external-notice{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:22px;text-align:center;}
+    .external-notice h3{font-size:16px;font-weight:600;color:var(--navy);margin-bottom:8px;}
+    .external-notice p{font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;}
+    .ext-link-btn{display:inline-flex;align-items:center;gap:8px;background:var(--blue);color:#fff;padding:10px 20px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:600;}
+
+    .ss{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;}
+    .ss.dark{border-color:rgba(0,0,0,.1);border-top-color:var(--blue);}
+
+    @media(max-width:900px){.app{grid-template-columns:1fr}.map-panel{position:relative;height:auto;max-height:260px}.stats-row{grid-template-columns:1fr 1fr}.detail-grid{grid-template-columns:1fr}.arv-box{grid-template-columns:1fr 1fr}.lien-links-grid{grid-template-columns:1fr}}
+    @media(max-width:600px){header{padding:0 14px}.content-panel{padding:16px 12px}.map-panel{padding:12px}.stats-row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏠</div>
+    <span class="logo-text">NJ Property Scout</span>
+    <span class="logo-badge">LIVE DATA</span>
+  </div>
+  <div class="header-right"><div class="live-dot"></div>CivilView · NJParcels · NJ Courts · County Clerks</div>
+</header>
+
+<div class="app">
+  <div class="map-panel">
+    <div class="panel-title">New Jersey Counties</div>
+    <div class="panel-sub">Click any county for live Sheriff Sales</div>
+    <div class="county-list" id="countyList"></div>
+  </div>
+  <div class="content-panel" id="contentPanel">
+    <div class="empty-state">
+      <div class="empty-icon">🗺️</div>
+      <h3>Select a County to Begin</h3>
+      <p>Choose any New Jersey county to pull live Sheriff Sale listings with real comps and full lien research from official government sources.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const COUNTIES=[
+  {name:"Atlantic",cvId:25},{name:"Bergen",cvId:7},{name:"Burlington",cvId:3},
+  {name:"Camden",cvId:1},{name:"Cape May",cvId:52},{name:"Cumberland",cvId:6},
+  {name:"Essex",cvId:2},{name:"Gloucester",cvId:19},{name:"Hudson",cvId:10},
+  {name:"Hunterdon",cvId:32},
+  {name:"Mercer",cvId:null,url:"https://www.mercercounty.org/government/sheriff-/informational/sheriff-s-foreclosure-sale"},
+  {name:"Middlesex",cvId:73},{name:"Monmouth",cvId:8},{name:"Morris",cvId:9},
+  {name:"Ocean",cvId:85},{name:"Passaic",cvId:17},{name:"Salem",cvId:20},
+  {name:"Somerset",cvId:null,url:"https://www.scsheriff.com/foreclosure-sales"},
+  {name:"Sussex",cvId:null,url:"https://www.sussexsheriff.com/foreclosures"},
+  {name:"Union",cvId:15},
+  {name:"Warren",cvId:null,url:"https://warrencountysheriffsoffice.com/civil-division/sheriff-sales/"},
+];
+
+const S={county:null,props:[],filtered:[],status:"idle",error:"",detailLinks:{},
+  details:{},detailsStatus:{},comps:{},compsStatus:{},
+  liens:{},liensStatus:{},notes:{},expanded:null,q:""};
+
+const list=document.getElementById("countyList");
+COUNTIES.forEach(c=>{
+  const btn=document.createElement("button");
+  btn.className="county-btn"; btn.id=`c-${c.name}`;
+  btn.innerHTML=`<span>${c.name}</span>${c.cvId?'<span class="live-tag">LIVE</span>':'<span class="ext-tag">→ ext</span>'}`;
+  btn.onclick=()=>selectCounty(c); list.appendChild(btn);
+});
+
+async function api(payload){
+  const r=await fetch("/api/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const d=await r.json();
+  if(!r.ok||d.error) throw new Error(d.error||"Request failed");
+  return d;
+}
+
+async function selectCounty(c){
+  document.querySelectorAll(".county-btn").forEach(b=>b.classList.remove("active"));
+  document.getElementById(`c-${c.name}`).classList.add("active");
+  Object.assign(S,{county:c,props:[],filtered:[],status:"loading",error:"",detailLinks:{},
+    details:{},detailsStatus:{},comps:{},compsStatus:{},liens:{},liensStatus:{},notes:{},expanded:null,q:""});
+  render();
+  if(!c.cvId){S.status="external";render();return;}
+  try{
+    const d=await api({type:"scrape",countyId:c.cvId});
+    S.props=d.properties||[];
+    S.filtered=S.props;
+    S.detailLinks=d.detailLinks||{};
+    S.status="done";
+  }catch(e){S.status="error";S.error=e.message;}
+  render();
+}
+
+function filter(q){
+  S.q=q; const t=q.toLowerCase();
+  S.filtered=t?S.props.filter(p=>
+    (p.address||"").toLowerCase().includes(t)||
+    (p.city||"").toLowerCase().includes(t)||
+    (p.defendant||"").toLowerCase().includes(t)||
+    (p.sheriffNum||"").toLowerCase().includes(t)||
+    (p.saleDate||"").toLowerCase().includes(t)
+  ):S.props;
+  renderList();
+}
+
+async function fetchDetails(idx){
+  const p=S.filtered[idx];
+  if(!p.propertyId)return;
+  S.detailsStatus[idx]="loading"; renderList();
+  try{
+    const d=await api({type:"details",propertyId:p.propertyId});
+    S.details[idx]=d.details||{};
+    S.detailsStatus[idx]="done";
+  }catch(e){
+    S.details[idx]={error:e.message};
+    S.detailsStatus[idx]="error";
+  }
+  renderList();
+}
+
+async function fetchComps(idx){
+  const p=S.filtered[idx];
+  S.compsStatus[idx]="loading"; renderList();
+  try{
+    const d=await api({type:"comps",address:p.address,city:p.city,county:S.county.name});
+    S.comps[idx]=d; S.compsStatus[idx]="done";
+  }catch(e){
+    S.comps[idx]={error:e.message}; S.compsStatus[idx]="error";
+  }
+  renderList();
+}
+
+async function fetchLiens(idx){
+  const p=S.filtered[idx];
+  S.liensStatus[idx]="loading"; renderList();
+  try{
+    const parcelId=S.comps[idx]?.parcelId||null;
+    const d=await api({type:"liens",address:p.address,city:p.city,county:S.county.name,
+      plaintiff:p.plaintiff,defendant:p.defendant,sheriffNum:p.sheriffNum,parcelId});
+    S.liens[idx]=d; S.liensStatus[idx]="done";
+  }catch(e){
+    S.liens[idx]={error:e.message}; S.liensStatus[idx]="error";
+  }
+  renderList();
+}
+
+function toggle(idx){S.expanded=S.expanded===idx?null:idx;renderList();}
+function saveNote(idx,v){S.notes[idx]=v;}
+
+function calcARV(sales){
+  const prices=sales.map(s=>parseInt((s.price||"").replace(/[^0-9]/g,""))).filter(n=>n>10000);
+  if(!prices.length)return null;
+  const avg=Math.round(prices.reduce((a,b)=>a+b,0)/prices.length);
+  return{arv:avg,maxBid:Math.round(avg*.65),repairEst:Math.round(avg*.1)};
+}
+function fm(n){return"$"+n.toLocaleString();}
+
+function getRisk(analysis){
+  if(!analysis)return{cls:"risk-medium",label:"⚡ ANALYZING..."};
+  const t=analysis.toUpperCase();
+  const i=t.indexOf("RISK LEVEL");
+  const snip=i>=0?t.substring(i,i+60):"";
+  if(snip.includes("HIGH")||t.substring(0,100).includes(": HIGH"))return{cls:"risk-high",label:"⚠️ HIGH RISK"};
+  if(snip.includes("LOW")||t.substring(0,100).includes(": LOW"))return{cls:"risk-low",label:"✓ LOW RISK"};
+  return{cls:"risk-medium",label:"⚡ MEDIUM RISK"};
+}
+
+function renderDetails(idx){
+  const d=S.details[idx];
+  if(!d)return"";
+  if(d.error)return`<div class="info-body" style="color:var(--red)">${d.error}</div>`;
+  const entries=Object.entries(d);
+  if(!entries.length)return`<div class="info-body">No additional details available.</div>`;
+  let html='<div class="full-details-box">';
+  entries.forEach(([k,v])=>{
+    html+=`<div class="detail-row"><span class="dk">${k}</span><span>${v}</span></div>`;
+  });
+  html+='</div>';
+  return html;
+}
+
+function renderComps(idx){
+  const d=S.comps[idx];
+  if(!d)return"";
+  if(d.error)return`<div class="info-body" style="color:var(--red)">${d.error}</div>`;
+  if(!d.comps||!d.comps.length){
+    return`<div class="info-body">No comparable sales found on NJParcels for this address.<br>
+      <a href="${d.searchUrl}" target="_blank" style="color:var(--blue)">Search NJParcels manually →</a></div>`;
+  }
+  const sales=d.comps;
+  const arv=calcARV(sales);
+  let html='<div style="padding:12px 14px">';
+  html+=`<table class="comps-table"><thead><tr><th>Address</th><th>Sale Date</th><th>Price</th><th>Sq Ft</th><th>$/SqFt</th></tr></thead><tbody>`;
+  sales.forEach(s=>{
+    html+=`<tr><td>${s.address||"—"}</td><td>${s.date||"—"}</td><td class="price-cell">${s.price||"—"}</td><td>${s.sqft||"—"}</td><td>${s.ppsf||"—"}</td></tr>`;
+  });
+  html+=`</tbody></table>`;
+  if(arv){
+    html+=`<div class="arv-box">
+      <div class="arv-item"><div class="arv-label">Est. ARV</div><div class="arv-value green">${fm(arv.arv)}</div></div>
+      <div class="arv-item"><div class="arv-label">Max Bid (65%)</div><div class="arv-value blue">${fm(arv.maxBid)}</div></div>
+      <div class="arv-item"><div class="arv-label">Est. Repairs</div><div class="arv-value amber">${fm(arv.repairEst)}</div></div>
+    </div>`;
+  }
+  html+=`<a class="source-link" href="${d.compsUrl}" target="_blank">📊 Full comps on NJParcels.com →</a>`;
+  html+='</div>';
+  return html;
+}
+
+function renderLiens(idx){
+  const d=S.liens[idx];
+  if(!d)return"";
+  if(d.error)return`<div class="info-body" style="color:var(--red)">${d.error}</div>`;
+  const risk=getRisk(d.analysis);
+  const links=d.links||{};
+  let html=`<div class="lien-panel">`;
+  html+=`<div class="risk-badge ${risk.cls}">${risk.label}</div>`;
+  if(d.analysis) html+=`<div class="lien-analysis">${d.analysis}</div>`;
+  html+=`<div class="lien-links-title">🔗 Search These Official Sources</div>`;
+  html+=`<div class="lien-links-grid">`;
+  Object.values(links).forEach(lnk=>{
+    html+=`<a class="lien-link-card" href="${lnk.url}" target="_blank">
+      <div class="lien-link-label">${lnk.label}</div>
+      <div class="lien-link-desc">${lnk.desc}</div>
+    </a>`;
+  });
+  html+=`</div>`;
+  html+=`<div class="lien-note">💡 <strong>Tip:</strong> Search "<strong>${d.defendant||""}</strong>" on NJ Courts for statewide judgments. Use the same name on the County Clerk site for mortgages and tax sale certificates.</div>`;
+  html+='</div>';
+  return html;
+}
+
+function renderList(){
+  const el=document.getElementById("propList");
+  if(!el)return;
+  if(!S.filtered.length){
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:32px;margin-bottom:10px">🔍</div><div style="font-size:14px">No properties match your search.</div></div>`;
+    return;
+  }
+  el.innerHTML=S.filtered.map((p,idx)=>{
+    const open=S.expanded===idx;
+    const cs=S.compsStatus[idx], ls=S.liensStatus[idx], ds=S.detailsStatus[idx];
+    const fullAddr=`${p.address||""}${p.city?", "+p.city:""}`;
+    return `<div class="prop-card${open?" open":""}" style="animation-delay:${Math.min(idx*.025,.4)}s">
+      <div class="prop-card-header" onclick="toggle(${idx})">
+        <div class="prop-num">${idx+1}</div>
+        <div class="prop-info">
+          <div class="prop-address">${p.address||"Address unavailable"}</div>
+          ${p.city?`<div class="prop-city">📍 ${p.city}, NJ</div>`:""}
+          <div class="prop-meta">
+            ${p.saleDate?`<span class="badge badge-date">📅 ${p.saleDate}</span>`:""}
+            ${p.sheriffNum?`<span class="badge badge-sheriff">${p.sheriffNum}</span>`:""}
+            ${p.defendant?`<span class="badge badge-defendant">${p.defendant.length>35?p.defendant.substring(0,35)+"…":p.defendant}</span>`:""}
+          </div>
+        </div>
+        <div class="prop-toggle">⌄</div>
+      </div>
+      ${open?`<div class="prop-body">
+        <div class="detail-grid">
+          <div class="detail-item"><div class="detail-label">Full Address</div><div class="detail-value">${fullAddr||"—"}</div></div>
+          <div class="detail-item"><div class="detail-label">Sale Date</div><div class="detail-value">${p.saleDate||"—"}</div></div>
+          <div class="detail-item"><div class="detail-label">Defendant (Owner)</div><div class="detail-value">${p.defendant||"—"}</div></div>
+          <div class="detail-item"><div class="detail-label">Plaintiff (Lender)</div><div class="detail-value">${p.plaintiff?(p.plaintiff.length>45?p.plaintiff.substring(0,45)+"…":p.plaintiff):"—"}</div></div>
+          <div class="detail-item"><div class="detail-label">Sheriff #</div><div class="detail-value">${p.sheriffNum||"—"}</div></div>
+          <div class="detail-item"><div class="detail-label">County</div><div class="detail-value">${S.county.name}, NJ</div></div>
+        </div>
+
+        <div class="action-row">
+          <button class="action-btn btn-details" onclick="fetchDetails(${idx})" ${ds==="loading"?"disabled":""}>
+            ${ds==="loading"?'<span class="ss dark"></span> Loading...':'📋 Full Property Details'}
+          </button>
+          <button class="action-btn btn-primary" onclick="fetchComps(${idx})" ${cs==="loading"?"disabled":""}>
+            ${cs==="loading"?'<span class="ss"></span> Searching...':'📊 Pull Real Comps'}
+          </button>
+          <button class="action-btn btn-danger" onclick="fetchLiens(${idx})" ${ls==="loading"?"disabled":""}>
+            ${ls==="loading"?'<span class="ss" style="border-top-color:var(--red);border-color:rgba(239,68,68,.3)"></span> Checking...':'🔍 Full Lien Check'}
+          </button>
+        </div>
+
+        ${S.details[idx]||ds==="loading"?`<div class="info-section">
+          <div class="info-header">
+            <div class="info-icon icon-blue">📋</div>
+            Full Property Details — CivilView
+            ${ds==="loading"?'<span class="ss dark" style="margin-left:8px"></span>':""}
+            ${ds==="done"?'<span class="status-tag status-done">✓ Loaded</span>':""}
+          </div>
+          ${ds==="loading"?'<div class="info-body">Loading full details from CivilView...</div>':renderDetails(idx)}
+        </div>`:""}
+
+        ${S.comps[idx]||cs==="loading"?`<div class="info-section">
+          <div class="info-header">
+            <div class="info-icon icon-blue">📊</div>
+            Comparable Sales — NJParcels.com (NJ Gov Data)
+            ${cs==="loading"?'<span class="ss dark" style="margin-left:8px"></span>':""}
+            ${cs==="done"?'<span class="status-tag status-done">✓ Real Data</span>':""}
+            ${cs==="error"?'<span class="status-tag status-error">✗ Error</span>':""}
+          </div>
+          ${cs==="loading"?'<div class="info-body">Searching NJParcels.com government database...</div>':renderComps(idx)}
+        </div>`:""}
+
+        ${S.liens[idx]||ls==="loading"?`<div class="info-section">
+          <div class="info-header">
+            <div class="info-icon icon-red">🔍</div>
+            Lien Check — NJ Courts · County Clerk · Tax Records · Bankruptcy
+            ${ls==="loading"?'<span class="ss dark" style="margin-left:8px"></span>':""}
+            ${ls==="done"?'<span class="status-tag status-done">✓ Complete</span>':""}
+            ${ls==="error"?'<span class="status-tag status-error">✗ Error</span>':""}
+          </div>
+          ${ls==="loading"?'<div class="info-body">Analyzing lien risk...</div>':renderLiens(idx)}
+        </div>`:""}
+
+        <div class="notes-label">✏️ Investment Notes</div>
+        <textarea class="notes-input" placeholder="Add your notes, bid strategy, due diligence reminders..."
+          onchange="saveNote(${idx},this.value)" oninput="saveNote(${idx},this.value)"
+        >${S.notes[idx]||""}</textarea>
+      </div>`:""}
+    </div>`;
+  }).join("");
+}
+
+function render(){
+  const panel=document.getElementById("contentPanel");
+  if(S.status==="idle"){
+    panel.innerHTML=`<div class="empty-state"><div class="empty-icon">🗺️</div><h3>Select a County to Begin</h3><p>Choose any NJ county to see live Sheriff Sale listings with real comps and full lien research.</p></div>`;
+    return;
+  }
+  if(S.status==="loading"){
+    panel.innerHTML=`<div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading ${S.county.name} County Sheriff Sales...</div><div class="loading-sub">Fetching live data from salesweb.civilview.com</div></div>`;
+    return;
+  }
+  if(S.status==="external"){
+    panel.innerHTML=`<div class="county-header"><div><div class="county-title">${S.county.name} County</div><div class="county-subtitle">Sheriff Sale Foreclosures</div></div></div>
+    <div class="external-notice"><h3>🔗 Official Sheriff Sale Portal</h3><p>${S.county.name} County uses its own Sheriff's website. Click below to view live listings directly.</p><a class="ext-link-btn" href="${S.county.url}" target="_blank">View ${S.county.name} County Sheriff Sales →</a></div>`;
+    return;
+  }
+  const total=S.props.length;
+  panel.innerHTML=`
+    <div class="county-header">
+      <div><div class="county-title">${S.county.name} County</div>
+      <div class="county-subtitle">Live Sheriff Sales · CivilView · Comps from NJParcels · Liens from NJ Courts</div></div>
+      <a class="sheriff-link" href="https://salesweb.civilview.com/Sales/SalesSearch?countyId=${S.county.cvId}" target="_blank">🔗 Official Source</a>
+    </div>
+    ${S.error?`<div class="error-box">⚠️ ${S.error}</div>`:""}
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-label">Total Listings</div><div class="stat-value blue">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">Comps Source</div><div class="stat-value" style="font-size:12px;margin-top:6px">NJParcels.com</div></div>
+      <div class="stat-card"><div class="stat-label">Lien Sources</div><div class="stat-value" style="font-size:12px;margin-top:6px">NJ Courts · Clerk</div></div>
+    </div>
+    <div class="filter-bar">
+      <input class="search-box" type="text" placeholder="Filter by address, city, defendant, sheriff #, or date..." oninput="filter(this.value)" value="${S.q}">
+      <div class="filter-count">${S.filtered.length} of ${total}</div>
+    </div>
+    <div class="properties-list" id="propList"></div>`;
+  renderList();
+}
+</script>
+</body>
+</html>
