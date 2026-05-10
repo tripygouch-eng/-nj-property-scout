@@ -12,139 +12,136 @@ export async function onRequest(context) {
     const body = await request.json();
     const { type } = body;
 
-    // ── 1. SCRAPE SHERIFF SALES — POST with Status=Open ────────────────────
+    // ── 1. SCRAPE SHERIFF SALES ─────────────────────────────────────────────
     if (type === "scrape") {
       const { countyId } = body;
-
-      // CivilView needs a form POST to return results
-      const formData = new URLSearchParams({
-        countyId: String(countyId),
-        Status: "Open",
-        SaleMonth: "",
-        SaleDate: "",
-        Sheriff: "",
-        Plaintiff: "",
-        Defendant: "",
-        Address: "",
-        City: "",
-      });
-
-      const res = await fetch("https://salesweb.civilview.com/Sales/SalesSearch", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Referer": `https://salesweb.civilview.com/Sales/SalesSearch?countyId=${countyId}`,
-          "Origin": "https://salesweb.civilview.com",
-        },
-        body: formData.toString(),
-      });
-
+      const res = await fetch(
+        `https://salesweb.civilview.com/Sales/SalesSearch?countyId=${countyId}`,
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+        }
+      );
       if (!res.ok) throw new Error(`CivilView error: ${res.status}`);
       const html = await res.text();
 
       const properties = [];
-      const clean = (s) => (s || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+      const clean = (s) => (s || "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 
-      // Parse table rows — each row has: Sheriff#, Sale Date, Plaintiff, Defendant, Address, City
-      const rowRegex = /<tr[^>]*class="[^"]*(?:row|item|sale)[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi;
-      let rowMatch;
-      while ((rowMatch = rowRegex.exec(html)) !== null) {
-        const row = rowMatch[1];
+      // Parse every table row that contains a PropertyId link
+      const allRows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+      for (const row of allRows) {
+        if (!row.includes("PropertyId=")) continue;
+
         const propIdMatch = row.match(/PropertyId=(\d+)/i);
         if (!propIdMatch) continue;
 
+        // Extract all cell contents
         const cells = [];
         const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-        let cell;
-        while ((cell = cellRegex.exec(row)) !== null) {
-          cells.push(clean(cell[1]));
+        let cm;
+        while ((cm = cellRegex.exec(row)) !== null) {
+          cells.push(clean(cm[1]));
         }
 
+        // CivilView columns: [View Details link], Sheriff#, Sale Date, Plaintiff, Defendant, Address
+        // The first cell is the "View Details" link cell — skip it
+        // So cells[1]=Sheriff#, cells[2]=SaleDate, cells[3]=Plaintiff, cells[4]=Defendant, cells[5]=Address
         if (cells.length >= 5) {
+          // Parse address — last part after last comma is city+state+zip
+          const rawAddr = cells[5] || cells[4] || "";
+          let address = rawAddr;
+          let city = "";
+
+          // CivilView format: "123 MAIN ST TOMS RIVER NJ 08753"
+          // Extract city by finding NJ zip pattern
+          const cityMatch = rawAddr.match(/^(.*?)\s+([A-Z\s]+)\s+NJ\s+\d{5}/i);
+          if (cityMatch) {
+            address = cityMatch[1].trim();
+            city = cityMatch[2].trim();
+          } else {
+            // Try splitting on last comma
+            const parts = rawAddr.split(/,\s*/);
+            if (parts.length > 1) {
+              address = parts.slice(0, -1).join(", ");
+              city = parts[parts.length - 1].replace(/\s*NJ\s*\d{5}.*$/i, "").trim();
+            }
+          }
+
           properties.push({
             propertyId: propIdMatch[1],
-            sheriffNum:  cells[0] || "",
-            saleDate:    cells[1] || "",
-            plaintiff:   cells[2] || "",
-            defendant:   cells[3] || "",
-            address:     cells[4] || "",
-            city:        cells[5] || "",
+            sheriffNum:  cells[1] || "",
+            saleDate:    cells[2] || "",
+            plaintiff:   cells[3] || "",
+            defendant:   cells[4] || "",
+            address:     address || rawAddr,
+            city:        city,
+            fullAddress: rawAddr,
           });
         }
       }
 
-      // Fallback: try simpler row detection if class-based didn't match
-      if (properties.length === 0) {
-        const allRows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
-        for (const rawRow of allRows) {
-          const propIdMatch = rawRow.match(/PropertyId=(\d+)/i);
-          if (!propIdMatch) continue;
-          const cells = [];
-          const cellRegex2 = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-          let c2;
-          while ((c2 = cellRegex2.exec(rawRow)) !== null) {
-            cells.push(clean(c2[1]));
-          }
-          if (cells.length >= 4) {
-            properties.push({
-              propertyId: propIdMatch[1],
-              sheriffNum:  cells[0] || "",
-              saleDate:    cells[1] || "",
-              plaintiff:   cells[2] || "",
-              defendant:   cells[3] || "",
-              address:     cells[4] || "",
-              city:        cells[5] || "",
-            });
-          }
-        }
-      }
-
-      // Also try to get property details URL for each listing
-      const detailLinks = {};
-      const linkRegex = /href="[^"]*SaleDetails[^"]*PropertyId=(\d+)[^"]*"/gi;
-      let lm;
-      while ((lm = linkRegex.exec(html)) !== null) {
-        detailLinks[lm[1]] = `https://salesweb.civilview.com/Sales/SaleDetails?PropertyId=${lm[1]}`;
-      }
-
-      return new Response(JSON.stringify({ properties, total: properties.length, detailLinks }), {
+      return new Response(JSON.stringify({ properties, total: properties.length }), {
         headers: { "Content-Type": "application/json", ...cors },
       });
     }
 
-    // ── 2. GET FULL PROPERTY DETAILS FROM CIVILVIEW ─────────────────────────
+    // ── 2. GET FULL PROPERTY DETAILS ────────────────────────────────────────
     if (type === "details") {
       const { propertyId } = body;
-      const url = `https://salesweb.civilview.com/Sales/SaleDetails?PropertyId=${propertyId}`;
-      const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" }
-      });
+      const res = await fetch(
+        `https://salesweb.civilview.com/Sales/SaleDetails?PropertyId=${propertyId}`,
+        { headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" } }
+      );
       if (!res.ok) throw new Error(`Details fetch failed: ${res.status}`);
       const html = await res.text();
-      const clean = (s) => (s || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
-      // Parse detail fields — CivilView uses label/value pairs in a table
+      const clean = (s) => (s || "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
       const details = {};
-      const pairRegex = /<td[^>]*class="[^"]*label[^"]*"[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/gi;
+
+      // Try label:value td pairs
+      const pairRegex = /<td[^>]*class="[^"]*[Ll]abel[^"]*"[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/g;
       let pm;
       while ((pm = pairRegex.exec(html)) !== null) {
-        const key = clean(pm[1]).replace(/:$/, "").trim();
-        const val = clean(pm[2]).trim();
-        if (key && val) details[key] = val;
+        const k = clean(pm[1]).replace(/:$/, "").trim();
+        const v = clean(pm[2]).trim();
+        if (k && v) details[k] = v;
       }
 
-      // Also try th/td pairs
-      const thRegex = /<th[^>]*>([\s\S]*?)<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/gi;
+      // Try th/td pairs
+      const thRegex = /<th[^>]*>([\s\S]*?)<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/g;
       let th;
       while ((th = thRegex.exec(html)) !== null) {
-        const key = clean(th[1]).replace(/:$/, "").trim();
-        const val = clean(th[2]).trim();
-        if (key && val) details[key] = val;
+        const k = clean(th[1]).replace(/:$/, "").trim();
+        const v = clean(th[2]).trim();
+        if (k && v && !details[k]) details[k] = v;
       }
 
-      return new Response(JSON.stringify({ details, url }), {
+      // Also try any bold/strong label pattern
+      const boldRegex = /<(?:b|strong)[^>]*>([\s\S]*?)<\/(?:b|strong)>\s*:?\s*([\s\S]*?)(?=<(?:b|strong|br|p|div|tr))/g;
+      let bm;
+      while ((bm = boldRegex.exec(html)) !== null) {
+        const k = clean(bm[1]).replace(/:$/, "").trim();
+        const v = clean(bm[2]).trim();
+        if (k && v && k.length < 50 && !details[k]) details[k] = v;
+      }
+
+      return new Response(JSON.stringify({ details, url: `https://salesweb.civilview.com/Sales/SaleDetails?PropertyId=${propertyId}` }), {
         headers: { "Content-Type": "application/json", ...cors },
       });
     }
@@ -152,8 +149,7 @@ export async function onRequest(context) {
     // ── 3. COMPS FROM NJPARCELS ─────────────────────────────────────────────
     if (type === "comps") {
       const { address, city, county } = body;
-      const fullAddr = city ? `${address}, ${city}` : address;
-      const streetAddr = address.replace(/,.*$/, "").trim();
+      const streetAddr = (address || "").replace(/,.*$/, "").trim();
       const searchUrl = `https://njparcels.com/search/address/?s=${encodeURIComponent(streetAddr)}&s_co=`;
 
       const searchRes = await fetch(searchUrl, {
@@ -162,8 +158,7 @@ export async function onRequest(context) {
       if (!searchRes.ok) throw new Error(`NJParcels search failed: ${searchRes.status}`);
       const searchHtml = await searchRes.text();
 
-      let parcelId = null;
-      let foundAddress = null;
+      let parcelId = null, foundAddress = null;
       const rowsRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
       let rowM;
       while ((rowM = rowsRegex.exec(searchHtml)) !== null) {
@@ -192,9 +187,9 @@ export async function onRequest(context) {
       const compsHtml = await compsRes.text();
 
       const sales = [];
-      const tableRowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
       let tRow;
-      while ((tRow = tableRowRegex.exec(compsHtml)) !== null) {
+      while ((tRow = trRegex.exec(compsHtml)) !== null) {
         const row = tRow[1];
         const cells = [];
         const cRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
@@ -203,7 +198,14 @@ export async function onRequest(context) {
           cells.push(cMatch[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
         }
         if (cells.length >= 3 && (cells[2] || "").includes("$")) {
-          sales.push({ address: cells[0] || "", date: cells[1] || "", price: cells[2] || "", assessment: cells[3] || "", sqft: cells[4] || "", ppsf: cells[5] || "" });
+          sales.push({
+            address: cells[0] || "",
+            date: cells[1] || "",
+            price: cells[2] || "",
+            assessment: cells[3] || "",
+            sqft: cells[4] || "",
+            ppsf: cells[5] || "",
+          });
         }
       }
 
@@ -257,37 +259,35 @@ export async function onRequest(context) {
       const clerkUrl = countyClerkUrls[county] || "https://www.nj.gov/state/archives/catcounty.html";
       const taxUrl = taxUrls[county] || "";
       const njParcelsUrl = parcelId
-        ? `https://njparcels.com/property/${parcelId.replace(/_/g,"/")}`
-        : `https://njparcels.com/search/address/?s=${encodeURIComponent((address||"").replace(/,.*$/,"").trim())}`;
+        ? `https://njparcels.com/property/${parcelId.replace(/_/g, "/")}`
+        : `https://njparcels.com/search/address/?s=${encodeURIComponent((address || "").replace(/,.*$/, "").trim())}`;
+
+      const fullAddr = `${address}${city ? ", " + city : ""}, NJ`;
 
       const prompt = `You are a NJ real estate title analyst. Give a SPECIFIC lien risk assessment for this Sheriff Sale property.
 
-Address: ${address}${city ? ", " + city : ""}
+Address: ${fullAddr}
 County: ${county} County, NJ
 Sheriff #: ${sheriffNum}
 Defendant: ${defendant}
 Plaintiff (Foreclosing Lender): ${plaintiff}
 
-Provide a SPECIFIC analysis with these exact sections:
+RISK LEVEL: Rate as LOW, MEDIUM, or HIGH based on these factors — HOA liens = higher risk, big bank plaintiff = medium, private lender = higher, reverse mortgage = lower equity risk. Give 1 sentence reason.
 
-RISK LEVEL: [Choose exactly one: LOW / MEDIUM / HIGH] — then explain the specific reason in 1 sentence based on the plaintiff type and typical ${county} County foreclosures.
+PLAINTIFF ANALYSIS: What type of lender is "${plaintiff}"? How long has this likely been in foreclosure based on the lender type?
 
-PLAINTIFF ANALYSIS: What type of lender is "${plaintiff}"? Is this a bank, servicer, HOA, or government? What does this tell us about how long the foreclosure has been going on and what other liens likely exist?
+LIKELY LIENS: List 3 specific liens with realistic dollar estimates for ${county} County NJ:
+- Property Taxes: $[estimate based on ${county} County avg of $8,000-$15,000/yr x estimated delinquency years]
+- [Second most likely lien type]: $[amount]
+- [Third most likely lien type]: $[amount]
 
-LIKELY LIENS: List the 3 most probable specific liens on this property with estimated dollar amounts based on ${county} County averages:
-- [Lien type]: $[estimated amount] — [reason]
-- [Lien type]: $[estimated amount] — [reason]  
-- [Lien type]: $[estimated amount] — [reason]
+ESTIMATED TOTAL ADDITIONAL LIEN EXPOSURE: $[total beyond the mortgage]
 
-ESTIMATED TOTAL LIEN EXPOSURE: $[total estimated amount beyond the mortgage]
+BANKRUPTCY RISK: Check PACER.gov for "${defendant}" — explain why this matters for this sale.
 
-TAX DELINQUENCY: Based on ${county} County average property taxes and typical foreclosure timeline, estimate outstanding taxes in dollars.
+RED FLAGS: List 1-3 specific red flags for this property based on plaintiff "${plaintiff}" and ${county} County.
 
-BANKRUPTCY CHECK: How to search if "${defendant}" filed bankruptcy and why it matters.
-
-RED FLAGS: Any specific red flags based on plaintiff "${plaintiff}" and ${county} County.
-
-Be specific with dollar amounts. Do not use asterisks.`;
+Keep it practical. No asterisks. Use real dollar estimates.`;
 
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
@@ -296,7 +296,7 @@ Be specific with dollar amounts. Do not use asterisks.`;
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 1200 },
+            generationConfig: { temperature: 0.1, maxOutputTokens: 1000 },
           }),
         }
       );
